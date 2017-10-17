@@ -10,6 +10,7 @@
 #define TAG_CHILD "[CHILD] "
 #define MY_SOCK_PATH "/tmp/MY_LOCAL_UNIX_SOCKET"
 #define RECV_BUFFER_SIZE 2048
+#define INT_STRING_BUFFER_SIZE 64
 
 void set_ud_socket(struct sockaddr_un *sock) {
     memset(sock, 0, sizeof(struct sockaddr_un));
@@ -46,11 +47,28 @@ void run_server(int child_pid) {
         goto fail;
     }
 
-    printf(TAG_PARENT "Hell, yeah!\n");
+    /*
+     * Read data from socket in a loop and convert string to numbers.
+     */
+    printf(TAG_PARENT "Client connected!\n");
     char buffer[RECV_BUFFER_SIZE];
     memset(buffer, 0, RECV_BUFFER_SIZE);
     while(recv(client_fd, buffer, RECV_BUFFER_SIZE, 0) > 0) {
-        printf("Recieved: %s\n", buffer);
+        printf(TAG_PARENT "Recieved as string: %s\n", buffer);
+        size_t iter = 0, start=0, stop=0;
+        char number_string[INT_STRING_BUFFER_SIZE];
+        while (buffer[iter] != '\0') {
+            // Numbers comes in form of INT\nINT'nINT\n...
+            if (buffer[iter] == '\n') {
+                stop = iter;
+                memset(number_string, 0, INT_STRING_BUFFER_SIZE);
+                memcpy(number_string, &(buffer[start]), stop-start);
+                int received_number = atoi(number_string);
+                printf(TAG_PARENT "As int variable: %d\n", received_number);
+                start = iter + 1;
+            }
+            ++iter;
+        }
         memset(buffer, 0, RECV_BUFFER_SIZE);
     }
 
@@ -68,6 +86,9 @@ fail:
 }
 
 void run_client() {
+    /*
+     * Connect to a Unix domain socket created by the server process.
+     */
     int s = socket(AF_UNIX, SOCK_STREAM, 0);
     if (s == -1) {
         goto fail;
@@ -80,11 +101,18 @@ void run_client() {
         goto fail;
     }
 
+    /*
+     * After successful connection, produce 10 000 random numbers, turn them into a
+     * string a send them via the socket.
+     */
     printf(TAG_CHILD "I'm connected, let's send 10,000 random numbers!\n");
     srand(time(NULL));
-    int r = rand();      // returns a pseudo-random integer between 0 and RAND_MAX
-    for (int i = 0; i<10; ++i) {
-        if (send(s, "ahoj\n", 5, 0) == -1) {
+    char number_string[INT_STRING_BUFFER_SIZE];
+    memset(number_string, 0, INT_STRING_BUFFER_SIZE);
+    for (int i = 0; i<10000; ++i) {
+        int r = rand();      // returns a pseudo-random integer between 0 and RAND_MAX
+        snprintf(number_string, INT_STRING_BUFFER_SIZE, "%d\n", r);
+        if (send(s, number_string, strnlen(number_string, INT_STRING_BUFFER_SIZE), 0) == -1) {
             goto fail;
         }
     }
@@ -101,6 +129,10 @@ int main() {
     printf(TAG_PARENT "Example of process creation and IPC:\n");
     pid_t pid = fork();
 
+    /*
+     * Create 2 processes that will communicate with each other.
+     * Client will produce numbers, server will receive them.
+     */
     switch (pid) {
         case -1:
             perror("fork failed");

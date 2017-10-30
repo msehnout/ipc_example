@@ -27,6 +27,7 @@ void run_server(int child_pid) {
     }
     // Now create a structure, that describes the socket parameters
     struct sockaddr_un local;
+    // My own function to set up parameters
     set_ud_socket(&local);
     // If there is already a socket, remove it:
     unlink(local.sun_path);
@@ -95,6 +96,7 @@ void run_client() {
     }
 
     struct sockaddr_un remote;
+    // My own functin to set up params
     set_ud_socket(&remote);
     int ret = connect(s, (struct sockaddr *)&remote, sizeof(struct sockaddr_un));
     if (ret == -1) {
